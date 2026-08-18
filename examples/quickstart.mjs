@@ -7,4 +7,6 @@ const res = await fetch("https://api.trendsapi.ai/api", {
   },
   body: JSON.stringify({ mode: "get_top_trends", type: "Google Trends", limit: 10 }),
 });
-console.log(await res.json());
+if (!res.ok) throw new Error(`HTTP ${res.status}`);
+const env = await res.json();
+console.log(env.statusCode === 200 ? JSON.parse(env.body) : env);
