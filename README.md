@@ -1,14 +1,14 @@
 # Trends API
 
-`POST https://api.trendsapi.ai/api` returns a 0-100 demand index for Google, TikTok, Amazon, Reddit, YouTube, Steam, npm, and related feeds.
+`POST https://api.trendsapi.ai/api` returns trend data for Google, TikTok, YouTube, Amazon, Pinterest, Reddit, X, Steam, npm and more: 53 data sets from 27 platforms.
 
-Three operations (`mode`): history, growth, live ranks. One Bearer key covers all of them.
+Five operations (`mode`): history, growth, live ranks, context (what people are posting about a keyword) and top posts for a hashtag. One Bearer key covers all of them.
 
-[Get a free key](https://trendsapi.ai/#get-key) · [Pricing](https://trendsapi.ai/#pricing) · [llms.txt](https://trendsapi.ai/llms.txt)
+[Get a free key](https://trendsapi.ai/account) · [Pricing](https://trendsapi.ai/pricing) · [llms.txt](https://trendsapi.ai/llms.txt)
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![REST](https://img.shields.io/badge/REST-POST%20%2Fapi-blue.svg)](https://trendsapi.ai/#quickstart)
-[![Free tier](https://img.shields.io/badge/free-100%20req%2Fmo-orange.svg)](https://trendsapi.ai/#pricing)
+[![REST](https://img.shields.io/badge/REST-POST%20%2Fapi-blue.svg)](https://trendsapi.ai/docs)
+[![Free tier](https://img.shields.io/badge/free-100%20req%2Fmo-orange.svg)](https://trendsapi.ai/pricing)
 
 ## Table of contents
 
@@ -18,10 +18,12 @@ Three operations (`mode`): history, growth, live ranks. One Bearer key covers al
 * [Methods](#methods)
 * [Request fields](#request-fields)
 * [Keyword sources](#keyword-sources)
-* [Live feeds](#live-feeds)
+* [Live boards](#live-boards)
 * [get_time_series](#get_time_series)
 * [get_growth](#get_growth)
 * [get_top_trends](#get_top_trends)
+* [get_context](#get_context)
+* [get_top_posts](#get_top_posts)
 * [Errors](#errors)
 * [Quota](#quota)
 * [SDKs](#sdks)
@@ -33,7 +35,7 @@ Three operations (`mode`): history, growth, live ranks. One Bearer key covers al
 | Item | Value |
 |---|---|
 | Header | `Authorization: Bearer <key>` |
-| Key | Issued at [trendsapi.ai/#get-key](https://trendsapi.ai/#get-key) |
+| Key | Issued at [trendsapi.ai/#get-key](https://trendsapi.ai/account) |
 | Free quota | 100 successful calls / month, no card |
 
 Do not put the key in client-side JavaScript or a public repo.
@@ -94,90 +96,106 @@ Successful JSON always looks like this:
 Python: `data = json.loads(res.json()["body"])`  
 Node: `const data = JSON.parse((await res.json()).body)`
 
-If the **HTTP** status is not 200, the gateway may return HTML (504). Check HTTP status before `.json()`. Only envelope `statusCode == 200` counts against quota.
+A missing key answers HTTP 401 (`missing_api_key`) and a wrong key HTTP 403 (`invalid_api_key`), with the error object as the body. A gateway timeout can return HTML (504). Check HTTP status before `.json()`. Only envelope `statusCode == 200` counts against quota.
 
 ## Methods
 
 One URL. The JSON field `mode` selects the operation.
 
-| `mode` | Returns | Required |
-|---|---|---|
-| `get_time_series` | Weekly history for one keyword on one source | `source`, `keyword` |
-| `get_growth` | Percent change over one or more windows | `source`, `keyword` |
-| `get_top_trends` | Live ranked list for one feed | `type` |
+| `mode` | Returns | Required | Cost |
+|---|---|---|---|
+| `get_time_series` | About five years of weekly history for one keyword on one source, as a 0 to 100 index plus volume where the source has it. | `keyword`, `source` | 1 request per call |
+| `get_growth` | Point-to-point growth over one or more windows, on one source or several in the same call. | `keyword`, `source` | 1 request per call, every window included |
+| `get_top_trends` | A live ranked board with no keyword: the current leaders, or the biggest climbers against an earlier snapshot. | `type` | MCP: 1 request per 10 rows, at most 10 per call. REST: 1 request per call |
+| `get_context` | What people are posting, reading and betting about a keyword right now: posts, videos, stories, comments and markets from each source, with engagement. | `keyword`, `source` | MCP: 1 request per source, at most 5 per call. REST: one source per call, 1 request |
+| `get_top_posts` | Live top posts for one hashtag, fetched on every call. Business plan. | `keyword`, `source` | 1 request per call |
 
-`get_trends` is an alias of `get_time_series`. Use `get_time_series` in new code.
+`get_top_posts` needs the Business plan. `get_trends` is an alias of `get_time_series`. Use `get_time_series` in new code.
 
-Not available: geo / region breakdown, related queries, related topics, hourly series, category filters on keyword sources.
+Not available: related queries, related topics, hourly series.
 
 ## Request fields
 
 | Field | Type | Used by | Required | Notes |
 |---|---|---|---|---|
-| `mode` | string | all | yes | One of the three values above |
-| `source` | string | time series, growth | yes | Lowercase. See [keyword sources](#keyword-sources) |
-| `keyword` | string | time series, growth | yes | Format depends on `source` |
-| `percent_growth` | array | growth | no | Default `["12M"]`. Strings and/or `{recent, baseline}` objects |
-| `type` | string | top trends | yes (prefer) | Exact feed name. See [live feeds](#live-feeds) |
-| `limit` | integer | top trends | no | Default 25, max 200 |
+| `mode` | string | all | yes | One of the five values above |
+| `source` | string | time series, growth, context, top posts | yes | See [keyword sources](#keyword-sources) and [get_context](#get_context) |
+| `keyword` | string | time series, growth, context, top posts | yes | Format depends on `source` |
+| `percent_growth` | array | growth | no | Default `["12M"]`. Strings and/or `{recent, baseline, name}` objects |
+| `country` | string | time series, growth, top trends | no | ISO code (`US`, `GB`, `JP`). Google, YouTube, TikTok, Pinterest and some boards |
+| `resolution` | string | time series, growth | no | Google and YouTube sources: `weekly` (default, about 5 years) or `daily` (last 90 days) |
+| `language` | string | time series, growth | no | Wikipedia edition (`en`, `de`, `ja`) |
+| `type` | string | top trends | yes | Exact board name. See [live boards](#live-boards) |
+| `limit` | integer | top trends, context, top posts | no | Top trends 1 to 200 (default 25); context 1 to 20 per source (default 10); top posts 1 to 20 (default 20) |
 | `offset` | integer | top trends | no | Default 0 |
-| `category` | string | top trends | no | Only `Amazon Best Sellers by Category` and `Top Websites` |
+| `sort` | string | top trends | no | `rank` (default) or `rank_change` for climbers |
+| `window` | string | top trends | no | With `rank_change`: `1d` `3d` `7d` `14d` `30d` |
+| `category` | string | top trends | no | The `by Category` boards and `Top Websites` |
+| `days` | integer | context | no | Look back 1 to 30 days. Default 7 |
+| `comments` | integer | context | no | Top comments for the first N items (0 to 5, default 2) |
 
 `source` and `type` are different catalogs. `source: "Google Trends"` is 400. `type: "google search"` is 400.
 
 ## Keyword sources
 
-`source` on `get_time_series` and `get_growth`. One source per time-series call. Growth may take a comma-separated list (`"amazon, tiktok, youtube"`).
+`source` on `get_time_series` and `get_growth` (14). One source per time-series call. Growth may take a comma-separated list (`"amazon, tiktok, youtube"`).
 
-| `source` | Signal | `keyword` must be |
+| `source` | Returns | `keyword` |
 |---|---|---|
-| `google search` | Google search volume | Any phrase |
-| `google images` | Image search volume | Any phrase |
-| `google news` | News-tab search volume | Any phrase |
-| `google shopping` | Shopping-tab search volume | Any phrase |
-| `youtube` | YouTube search volume | Any phrase |
-| `tiktok` | TikTok hashtag volume | Hashtag or topic (`#` optional) |
-| `reddit` | Community / topic attention | Subreddit name, no `r/` |
-| `amazon` | Amazon product search volume | Product name or category |
-| `wikipedia` | Wikipedia page views | Article title or topic |
-| `news volume` | Article mention volume | Any phrase |
-| `news sentiment` | News tone | Any phrase |
-| `app downloads` | Android download interest | Bundle ID, e.g. `com.openai.chatgpt` |
-| `app rankings` | Android chart position | Bundle ID, e.g. `com.himshers.hims` |
-| `npm` | npm weekly downloads | Exact package name (`react`, `@babel/core`) |
-| `steam` | Monthly concurrent players | Game display name (`Elden Ring`) |
+| `Google Search` | Search interest as a 0–100 index, about 5 years | Any name or phrase (`electric vehicles`) |
+| `Google Images` | Image search interest as a 0–100 index, about 5 years | Any name or phrase (`electric vehicles`) |
+| `Google News` | News search interest as a 0–100 index, about 5 years | Any name or phrase (`electric vehicles`) |
+| `Google Shopping` | Shopping search interest as a 0–100 index, about 5 years | Any name or phrase (`running shoes`) |
+| `YouTube` | YouTube search interest as a 0–100 index, about 5 years | Any name or phrase (`stanley cup`) |
+| `Wikipedia` | Article page views as a 0–100 index, plus raw views | Any name or phrase (`Bitcoin`) |
+| `TikTok` | Hashtag views as a 0–100 index, plus raw views | Any name or phrase (`booktok`) |
+| `Amazon` | Product search volume as a 0–100 index, plus raw volume | Any name or phrase (`air fryer`) |
+| `Pinterest` | Pinterest search interest as a 0–100 index, about 2 years | Any name or phrase (`matcha`) |
+| `npm` | Package downloads as a 0–100 index, plus raw downloads | Exact npmjs.com package name, case-sensitive (`langchain`) |
+| `Python` | Package downloads as a 0–100 index, plus raw downloads | Exact PyPI project name (`pandas`) |
+| `Steam` | Concurrent players as a 0–100 index, plus raw players | Game display name in plain English, not a Steam App ID (`Elden Ring`) |
+| `App Downloads` | Android app downloads as a 0–100 index, plus raw downloads | Android bundle ID only (the id= value on Google Play) (`com.openai.chatgpt`) |
+| `App Rankings` | Android chart rank as a 0–100 index, plus raw rank | Android bundle ID only (the id= value on Google Play) (`com.openai.chatgpt`) |
 
-`chatgpt` on `app downloads` is 404. Use the Play Store id after `?id=`.
+`chatgpt` on `App Downloads` is 404. Use the Play Store id after `?id=`.
 
-iOS charts, GitHub repos, Spotify, IMDb, Open Library, and global site rank are [live feeds](#live-feeds), not `source` values. There is no `source: "web traffic"`.
+Reddit, X, iOS charts, GitHub, Spotify, IMDb, Open Library, Substack, Polymarket and site rank are [live boards](#live-boards) (and some are [context sources](#get_context)), not `source` values for history.
 
-## Live feeds
+## Live boards
 
-`type` on `get_top_trends`. No `keyword`. Match spelling and capitalization exactly.
+`type` on `get_top_trends` (27). No `keyword`. Match spelling and capitalization exactly.
 
-| `type` | Ranks |
-|---|---|
-| `Google Trends` | Google searches right now |
-| `Google News Top News` | Google News stories |
-| `TikTok Trending Hashtags` | TikTok hashtags |
-| `TikTok Trending Searches` | TikTok in-app searches |
-| `TikTok Shop Hot Products` | TikTok Shop products |
-| `YouTube Trending` | YouTube videos |
-| `X (Twitter) Trending` | Topics on X |
-| `Reddit Hot Posts` | Reddit front page |
-| `Reddit World News` | r/worldnews |
-| `Wikipedia Trending` | Most-viewed articles today |
-| `Amazon Best Sellers Top Rated` | Top-rated Amazon sellers |
-| `Amazon Best Sellers by Category` | Category sellers (`category` filter) |
-| `App Store Top Free` | iOS free chart |
-| `App Store Top Paid` | iOS paid chart |
-| `Google Play` | Play chart |
-| `Top Websites` | Global traffic rank |
-| `Spotify Top Podcasts` | Spotify podcasts |
-| `Steam Most Played` | Live concurrent players |
-| `GitHub Trending Repos` | Daily repos |
-| `IMDb MOVIEmeter` | Movie activity |
-| `Open Library Trending Books` | Books |
+| `type` | Returns | Updated |
+|---|---|---|
+| `Amazon Best Sellers Top Rated` | Top-rated best sellers across all categories | Daily |
+| `Amazon Best Sellers by Category` | Best sellers per product category | Daily |
+| `App Store Top Free` | Top free iOS apps | Daily |
+| `App Store Top Paid` | Top paid iOS apps | Daily |
+| `GitHub` | Daily trending repositories | Daily |
+| `Google News Top News` | Top news stories | Live |
+| `Google Play` | Top Android apps | Daily |
+| `Google Trends` | Trending searches right now | Live |
+| `Google Trends by Category` | Trending searches per topic board | Live |
+| `IMDb MOVIEmeter` | Most popular movies by user activity | Daily |
+| `Open Library Trending Books` | Daily trending books | Daily |
+| `Pinterest Trending` | Top Pinterest searches this month | Live |
+| `Pinterest Trending by Category` | Top Pinterest searches this month per category | Live |
+| `Polymarket Top Markets` | Prediction markets with the most money traded in the last 24 hours | Live |
+| `Reddit Hot Posts` | Hottest posts on the front page | Live |
+| `Reddit World News` | Top posts in r/worldnews | Live |
+| `Top Websites` | Most-visited websites by traffic rank | Monthly |
+| `Spotify Top Podcasts` | Top podcasts | Daily |
+| `Steam Most Played` | Games by concurrent live players | Live |
+| `Substack` | Top newsletters overall | Daily |
+| `Substack by Category` | Top newsletters per category | Daily |
+| `TikTok Trending Hashtags` | Trending hashtags | Daily |
+| `TikTok Trending Hashtags by Category` | Trending hashtags per industry board | Daily |
+| `TikTok Trending Searches` | Trending search terms | Daily |
+| `Wikipedia Trending` | Most-viewed articles today | Daily |
+| `X (Twitter) Trending` | Trending topics | Live |
+| `YouTube Trending` | Trending videos | Daily |
+
+Category names per board: [data catalog](https://trendsapi.ai/data-catalog.md).
 
 ## get_time_series
 
@@ -201,7 +219,7 @@ Parsed `body` is an **array of points**.
 
 Read `date` and `value` in application code. Treat `source` / `datatype` / `volume` as optional extras.
 
-Free keys: 90 days, 24h delay. Paid: up to about five years weekly.
+Every plan, Free included, gets the full history: about five years weekly.
 
 ## get_growth
 
@@ -273,18 +291,50 @@ Labels are feed-specific (search term, video title, hostname, app name). They ar
 
 Omitting `type` on REST returns every feed and is billed per feed. Send one `type` per call.
 
+## get_context
+
+What people are posting, reading and betting about a keyword right now, with engagement. REST takes one source per call (1 request).
+
+```json
+{"mode": "get_context", "source": "Reddit", "keyword": "nintendo switch 2", "days": 7, "limit": 10}
+```
+
+Sources: `News`, `YouTube`, `TikTok`, `Instagram`, `X`, `Reddit`, `Bluesky`, `Hacker News`, `Polymarket`, `GitHub`.
+
+Parsed `body` object:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `keyword` | string | The keyword you asked for |
+| `window_days` | number | How far back it looked |
+| `sources[].source` | string | The source |
+| `sources[].items[]` | array | Each item: `kind`, `url`, `title`, `text`, `author`, `published`, `engagement` (views, likes, comments, shares, score), `top_comments` |
+| `sources[].error` | string or null | Why a source returned nothing, when it failed |
+
+## get_top_posts
+
+Live top posts for one hashtag, fetched on every call. **Business plan.** 1 request per call.
+
+```json
+{"mode": "get_top_posts", "source": "TikTok", "keyword": "booktok", "limit": 20}
+```
+
+Sources: `TikTok` and `Instagram`. Each `posts[]` item has `rank`, `caption`, `author`, `plays` / `likes` / `comments`, `posted` and `url`.
+
 ## Errors
 
-Use envelope `statusCode`, not only HTTP status.
+Use envelope `statusCode`, not only HTTP status. Errors carry an `error` code and a `message`. Failed calls are free.
 
 | Code | When | Retry? |
 |---|---|---|
-| 400 | Bad `mode` / `source` / `type`, or missing field | No. Fix the body |
-| 401 | Missing or invalid key | No. Fix the key |
-| 404 | No series for that keyword + source | No. Wrong spelling or wrong keyword format |
-| 429 | Monthly quota used | No until the next cycle, or upgrade |
-| 500 | Upstream error | Yes, with backoff |
-| HTTP 504 HTML | Gateway timeout (seen on `news volume`) | Yes. Not billed |
+| 400 | `missing_parameter`, `invalid_source`, `invalid_mode`, `invalid_request`, `growth_calculation_failed` | No. Fix the body or the window |
+| 401 (HTTP) | `missing_api_key`: no key sent | No. Send the key |
+| 403 (HTTP) | `invalid_api_key`: key mistyped or regenerated | No. Copy the key from your account |
+| 403 | `plan_required`: tool needs a higher plan (Top Posts: Business) | No. Upgrade |
+| 404 | `no_data`: nothing for that keyword + source | No. Check spelling or keyword format |
+| HTTP deny | `monthly_limit_reached`: monthly requests used and no credits left (the message links to credits and plans) | Buy credits or upgrade |
+| 502 | `source_unavailable`: the upstream source did not answer | Yes, later |
+| 500 | `internal_error` (body has a `request_id` for support) | Yes, with backoff |
 
 ```json
 {
@@ -295,20 +345,26 @@ Use envelope `statusCode`, not only HTTP status.
 
 ## Quota
 
-Only `statusCode` 200 is billed.
+Only `statusCode` 200 is billed. Every plan reads every data set and the full history.
 
-| Plan | Requests / month | Freshness | History |
+| Plan | Requests / month | Top trends rows | Price / month |
 |---|---|---|---|
-| Free | 100 | 24h delay | 90 days |
-| Starter | 5,000 | real-time | 1 year |
-| Pro | 25,000 | real-time | 5 years |
-| Business | 100,000 | real-time | full archive |
+| Free | 100 | Top 10, 24h delay | $0 |
+| Starter | 1,000 | Full board | $19 |
+| Pro | 5,000 | Full board | $49 |
+| Business | 25,000 | Full board | $199 |
+
+Yearly billing: Starter $16/mo, Pro $39/mo, Business $159/mo. Top Posts is on Business.
+
+**Pay as you go:** one-time credit packs, no subscription ($15 for 600, $49 for 2,500, $199 for 12,000 credits). 1 credit = 1 request. Credits never expire and are used after a plan's monthly requests run out. [Pricing](https://trendsapi.ai/pricing).
 
 One billed request =
 
 - `get_time_series`: 1 source + 1 keyword
-- `get_growth`: 1 source + 1 keyword (all windows included)
+- `get_growth`: 1 keyword (all windows included)
 - `get_top_trends`: 1 `type`
+- `get_context`: 1 source
+- `get_top_posts`: 1 hashtag
 
 ## SDKs
 
@@ -368,17 +424,14 @@ Job-specific. Not copies of this file.
 | Replace pytrends | [pytrends-alternative](https://github.com/trendsapi-ai/pytrends-alternative) |
 | TikTok hashtag volume | [tiktok-trends-api](https://github.com/trendsapi-ai/tiktok-trends-api) |
 | YouTube search interest | [youtube-trends-api](https://github.com/trendsapi-ai/youtube-trends-api) |
-| Reddit attention | [reddit-trends-api](https://github.com/trendsapi-ai/reddit-trends-api) |
 | Amazon search demand | [amazon-trends-api](https://github.com/trendsapi-ai/amazon-trends-api) |
 | Wikipedia page views | [wikipedia-trends-api](https://github.com/trendsapi-ai/wikipedia-trends-api) |
 | npm downloads | [npm-trends-api](https://github.com/trendsapi-ai/npm-trends-api) |
 | Steam concurrent players | [steam-trends-api](https://github.com/trendsapi-ai/steam-trends-api) |
 | App Store / Play charts | [app-store-trends-api](https://github.com/trendsapi-ai/app-store-trends-api) |
-| News mention volume | [news-trends-api](https://github.com/trendsapi-ai/news-trends-api) |
-| News tone | [news-sentiment-api](https://github.com/trendsapi-ai/news-sentiment-api) |
 | Site traffic rank | [web-traffic-api](https://github.com/trendsapi-ai/web-traffic-api) |
 
-Site: [trendsapi.ai/trends](https://trendsapi.ai/trends).
+Every data set: [trendsapi.ai/data-catalog](https://trendsapi.ai/data-catalog).
 
 ## License
 
